@@ -1,77 +1,121 @@
  
+from google.auth.transport import requests
 from docutils.nodes import address
 from langchain_core.tools import tool 
-from langchain_groq import ChatGroq      # ✓ Fix 1: correct class name 
-from langgraph.prebuilt import create_react_agent  # ✓ Fix 3: correct import 
+from langchain.agents import create_agent
 from langgraph.checkpoint.memory import InMemorySaver 
 from langchain_core.messages import HumanMessage 
 from dotenv import load_dotenv 
 from typing import List 
- 
- 
- 
- 
- 
-llm = ChatGroq( 
-    model="llama-3.3-70b-versatile",  # ✓ Fix 2: valid Groq model 
-    temperature=0.7 
-)
- 
- 
- 
-@tool # ✓ Fix 4: no () on 
+from langchain_groq import ChatGroq 
 
-def user_info(user_name: str) -> str: 
-    """Get user profile info by username. Known users: hrithik, rohan, neha, pratik, suraj""" 
-    users = { 
-        "hrithik": "name: Hrithik Hadawale, age: 24, number: 1234567890, address: Pune", 
-        "rohan":   "name: Rohan Hadawale, age: 22, number: 1234567890, address: Pune", 
-        "neha":    "name: Neha Mahale, age: 20, number: 1234567890, address: Pune", 
-        "pratik":  "name: Pratik Hadawale, age: 26, number: 1234567890, address: Pune", 
-        "suraj":   "name: Suraj, age: 28, number: 1234567890, address: Pune", 
+import os
+
+
+
+load_dotenv()
+ 
+system_prompt = """
+<ROLE>
+You are a helpful assistant for ecommerce company "SURAJ CARE",
+your job is to answer user queries based on the available tools.
+your goal is to help the user to get the best answer.
+</ROLE>
+
+<Chain-of-Thought>
+Always think step by step and use the available tools to get the best answer.
+first check which tools are needed to answer the user query
+then use the tools to get the best answer
+then answer the user query
+</Chain-of-Thought>
+
+<COMPANY_INFO>
+Our company address is in New York, usa
+Our company email is suraj@gmail.com
+</COMPANY_INFO>
+
+<CONSTRAINTS>
+Respond only in english.
+if question is asked in hindi then translate it in english and then answer 
+</CONSTRAINTS>
+
+<TOOLS_INFO>
+    user_info tool provides user information
+    products tool provides list of products
+    order_history tool provides order history of user
+    internet_searrch_tool provides information from the internet
+</TOOLS_INFO>
+
+
+
+<OUTPUT_FORMAT>
+    Respond in the following format:
+    - user_info
+    - products
+    - order_history
+    - date
+</OUTPUT_FORMAT>
+"""
+
+ 
+@tool()
+def user_info(user_name: str) -> int:
+    """ this tool provides user information """
+    return 101
+
+@tool()
+def products() -> List[str]:
+    """ this tool provides list of products """
+    return ["laptop", "mobile", "tablet", "headphones", "smartwatch"]
+
+@tool()
+def order_history(user_name: str) -> List[str]:
+    """ this tool provides order history of user """
+    return ["laptop", "mobile"]
+
+@tool
+def internet_searrch_tool(query:str) ->str:
+    """ this tool provides information from the internet """
+    import requests
+    url = "https://google.serper.dev/search"
+
+    payload = {
+    "q": "apple inc"
     }
-    return users.get(user_name.lower(), "User not found. Valid: hrithik, rohan, neha, pratik, suraj") 
+    headers = {
+  'X-API-KEY': 'a8f3febe81109ca0296a1e46153b56e5096b3b01',
+  'Content-Type': 'application/json'
+    }
 
-@tool 
-def products() -> List[str]: 
-    """Get the full list of available products in the store.""" 
-    return ["laptop", "mobile", "tablet", "headphones", "smartwatch"] 
- 
-@tool 
-def order_history(user_name: str) -> List[str]: 
-    """Get the order history for a specific user by username.""" 
-    orders = { 
-        "hrithik": ["laptop", "mobile"], 
-        "rohan":   ["tablet", "headphones"], 
-        "neha":    ["smartwatch", "laptop"], 
-        "pratik":  ["mobile", "tablet"], 
-        "suraj":   ["headphones", "smartwatch"]
-    return orders.get(user_name.lower(), []),  # returns [] if not found 
- 
- 
-checkpointer = InMemorySaver()  # ✓ Fix 7: memory storage 
- 
-agent = create_react_agent(  # ✓ Fix 3: correct function 
-    model=llm, 
-    tools=[user_info, products, order_history], 
-    checkpointer=checkpointer  # ✓ Fix 7: pass checkpointer 
+    response = requests.request("POST", url, headers=headers, json=payload)
+
+    return response.text
+
+llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    groq_api_key=os.environ.get("GROQ_API_KEY"),
+    temperature=0.7
 )
  
  
+memory = InMemorySaver()
+agent = create_agent(
+    model=llm,
+    tools=[user_info, products, order_history,internet_searrch_tool],
+    system_prompt=system_prompt,
+    checkpointer=memory,
+    
+)
+
+
  
  
-config = {"configurable": {"thread_id": "session_001"}}  # ✓ Fix 8 
- 
- 
+config = {"configurable": {"thread_id": "session_001"}}
+
 response = agent.invoke( 
-    {"messages": [HumanMessage(content="What is the order history of hrithik?")]}, 
+    {"messages": [{"role": "user", "content": "Which team is won yesterday match in IpL 2026? "}]}, 
     config=config 
 )
 print(response["messages"][-1].content) 
  
  
-response2 = agent.invoke( 
-    {"messages": [HumanMessage(content="What products are available?")]}, 
-    config=config 
-)
-print(response2["messages"][-1].content) 
